@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Tracker">
+<meta name="theme-color" content="#FAFBFC">
+<title>Daily Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --teal: #00A896;
+    --teal-light: #E6FAF7;
+    --teal-mid: #80D4CB;
+    --bg: #FAFBFC;
+    --card: #FFFFFF;
+    --text: #1E293B;
+    --muted: #94A3B8;
+    --green: #10B981;
+    --amber: #F59E0B;
+    --red: #EF4444;
+    --border: #E2E8F0;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: 'DM Sans', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    user-select: none;
+    -webkit-user-select: none;
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  button { font-family: inherit; cursor: pointer; -webkit-appearance: none; }
+  input, select { font-family: inherit; -webkit-appearance: none; }
+
+  .header {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 20px;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .header-top { display: flex; justify-content: space-between; align-items: center; }
+  .header-title { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
+  .header-date { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .score-badge {
+    background: linear-gradient(135deg, var(--teal), var(--teal-mid));
+    border-radius: 16px; padding: 8px 16px; color: #fff;
+    font-weight: 700; font-size: 18px; font-family: 'DM Mono', monospace;
+  }
+  .score-badge span { font-weight: 400; font-size: 13px; opacity: 0.8; }
+  .controls { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; gap: 8px; }
+  .toggle-group { display: flex; gap: 4px; background: #F1F5F9; border-radius: 10px; padding: 3px; }
+  .toggle-btn {
+    padding: 6px 16px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600;
+    background: transparent; color: var(--muted); transition: all 0.15s;
+  }
+  .toggle-btn.active { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .nav-btn {
+    border: none; background: #F1F5F9; border-radius: 8px; width: 36px; height: 36px;
+    font-size: 18px; color: var(--text); display: flex; align-items: center; justify-content: center;
+  }
+  .today-btn {
+    border: none; border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600;
+  }
+  .today-btn.current { background: var(--teal); color: #fff; }
+  .today-btn.offset { background: #F1F5F9; color: var(--muted); }
+  .edit-btn {
+    border: none; border-radius: 8px; padding: 6px 14px; font-size: 13px; font-weight: 600;
+  }
+  .edit-btn.active { background: var(--teal); color: #fff; }
+  .edit-btn.inactive { background: #F1F5F9; color: var(--muted); }
+
+  .grid-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { border-collapse: collapse; width: 100%; }
+  .habit-cell {
+    position: sticky; left: 0; background: var(--card); z-index: 40;
+    padding: 8px 12px; border-right: 1px solid var(--border);
+    min-width: 160px; max-width: 200px;
+  }
+  .habit-row { display: flex; align-items: center; gap: 8px; }
+  .habit-emoji { font-size: 18px; flex-shrink: 0; }
+  .habit-name { font-size: 13px; font-weight: 600; line-height: 1.2; }
+  .habit-freq { font-size: 10px; color: var(--muted); }
+  .day-header { padding: 6px 2px; text-align: center; min-width: 48px; }
+  .day-header.month-view { min-width: 28px; }
+  .day-header.today { background: var(--teal-light); border-radius: 8px 8px 0 0; }
+  .day-name { font-size: 10px; font-weight: 600; color: var(--muted); letter-spacing: 0.3px; }
+  .day-header.today .day-name { color: var(--teal); }
+  .day-num { font-size: 15px; font-weight: 700; margin-top: 1px; }
+  .day-header.month-view .day-num { font-size: 12px; }
+  .day-header.today .day-num { color: var(--teal); }
+  .day-month { font-size: 9px; color: var(--muted); }
+  .stat-cell { text-align: center; padding: 4px 6px; }
+  .stat-val { font-size: 12px; font-weight: 700; font-family: 'DM Mono', monospace; }
+  .check-cell { text-align: center; padding: 4px 2px; }
+  .check-cell.today { background: var(--teal-light); }
+
+  .check-btn {
+    width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--border);
+    background: var(--card); display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700; color: transparent; transition: all 0.15s; margin: 0 auto;
+  }
+  .check-btn.small { width: 24px; height: 24px; font-size: 10px; }
+  .check-btn.checked { border-color: var(--teal); background: var(--teal); color: #fff; }
+  .check-btn.future { border-color: #E2E8F0; background: #F8FAFC; opacity: 0.3; }
+
+  .total-row td { border-top: 2px solid var(--border); }
+  .total-cell { position: sticky; left: 0; background: var(--bg); z-index: 40; padding: 10px 12px; font-weight: 700; font-size: 12px; color: var(--muted); border-right: 1px solid var(--border); }
+  .total-val { font-size: 16px; font-weight: 700; font-family: 'DM Mono', monospace; text-align: center; padding: 10px 2px; }
+
+  .summary { padding: 16px 20px; }
+  .summary-title { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: 0.5px; margin-bottom: 10px; }
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+  .summary-card {
+    background: var(--card); border-radius: 12px; padding: 12px 14px;
+    border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .card-pct { font-size: 18px; font-weight: 700; font-family: 'DM Mono', monospace; }
+  .card-name { font-size: 12px; font-weight: 600; line-height: 1.2; }
+  .card-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .card-bar { margin-top: 6px; height: 4px; background: #F1F5F9; border-radius: 2px; overflow: hidden; }
+  .card-bar-fill { height: 100%; border-radius: 2px; transition: width 0.3s ease; }
+
+  .add-habit {
+    padding: 16px 20px; background: var(--card); border-top: 1px solid var(--border);
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  }
+  .add-input {
+    flex: 1; min-width: 150px; padding: 10px 14px; border-radius: 10px;
+    border: 1px solid var(--border); font-size: 14px; outline: none; background: var(--card);
+  }
+  .add-select {
+    padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border);
+    font-size: 14px; background: var(--card);
+  }
+  .add-btn {
+    padding: 10px 20px; border-radius: 10px; border: none;
+    background: var(--teal); color: #fff; font-weight: 700; font-size: 14px;
+  }
+  .move-btn { border: none; background: none; font-size: 10px; padding: 0; color: var(--muted); }
+  .remove-btn {
+    margin-left: auto; border: none; background: #FEE2E2; border-radius: 6px;
+    width: 24px; height: 24px; font-size: 12px; color: var(--red); font-weight: 700;
+  }
+
+  .footer { padding: 20px 20px 40px; text-align: center; }
+  .footer-hint { font-size: 11px; color: var(--muted); }
+  .reset-btn { margin-top: 12px; border: none; background: none; font-size: 11px; color: #CBD5E1; }
+
+  tbody tr { border-bottom: 1px solid var(--border); }
+  thead th { border-bottom: 2px solid var(--border); }
+  thead th.today-border { border-bottom-color: var(--teal); }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const HABITS_DEFAULT = [
+  { name: "No Drinks", freq: "daily", target: 90, emoji: "\u{1F6AB}" },
+  { name: "Focus", freq: "daily", target: 93, emoji: "\u{1F3AF}" },
+  { name: "Read", freq: "daily", target: 96, emoji: "\u{1F4D6}" },
+  { name: "Meditate", freq: "3x/week", target: 93, emoji: "\u{1F9D8}" },
+  { name: "Exercise", freq: "4x/week", target: 50, emoji: "\u{1F4AA}" },
+  { name: "Apple Ring", freq: "daily", target: 84, emoji: "\u231A" },
+  { name: "Eating Plan", freq: "daily", target: 84, emoji: "\u{1F957}" },
+  { name: "Diary", freq: "daily", target: 95, emoji: "\u{1F4DD}" },
+  { name: "10,000 Steps", freq: "daily", target: 69, emoji: "\u{1F6B6}" },
+  { name: "Duolingo", freq: "daily", target: 100, emoji: "\u{1F989}" },
+  { name: "Floss", freq: "daily", target: 95, emoji: "\u{1F9B7}" },
+  { name: "Stretch", freq: "3x/week", target: 43, emoji: "\u{1F938}" },
+  { name: "Bed by 10pm", freq: "daily", target: 50, emoji: "\u{1F6CF}\uFE0F" },
+  { name: "Fruit x 2", freq: "daily", target: 70, emoji: "\u{1F34E}" },
+  { name: "Batch Cook", freq: "weekly", target: 7, emoji: "\u{1F372}" },
+  { name: "Friends & Family", freq: "weekly", target: 19, emoji: "\u{1F465}" },
+  { name: "Measure & Record", freq: "weekly", target: 18, emoji: "\u{1F4CA}" },
+  { name: "Jobs", freq: "weekly", target: 21, emoji: "\u{1F527}" },
+  { name: "Finance", freq: "monthly", target: 3, emoji: "\u{1F4B0}" },
+  { name: "Holiday Planning", freq: "monthly", target: 3, emoji: "\u2708\uFE0F" },
+  { name: "Hobbies", freq: "occasional", target: 10, emoji: "\u{1F3A8}" },
+  { name: "Reward", freq: "monthly", target: 0, emoji: "\u{1F381}" },
+  { name: "Brick x 4", freq: "5x/week", target: 50, emoji: "\u{1F9F1}" },
+  { name: "Ebike", freq: "monthly", target: 3, emoji: "\u{1F6B2}" },
+];
+
+const STORAGE_ENTRIES = "ht_entries_v1";
+const STORAGE_HABITS = "ht_habits_v1";
+
+function load(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) return JSON.parse(raw);
+  } catch(e) { console.error("Load error:", e); }
+  return fallback;
+}
+function save(key, data) {
+  try { localStorage.setItem(key, JSON.stringify(data)); } catch(e) { console.error("Save error:", e); }
+}
+
+let habits = load(STORAGE_HABITS, HABITS_DEFAULT);
+let entries = load(STORAGE_ENTRIES, {});
+let view = "week";
+let weekOffset = 0;
+let editMode = false;
+
+function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+function dateKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+function dayName(d) { return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()]; }
+function dayNum(d) { return d.getDate(); }
+function monthName(d) { return ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getMonth()]; }
+
+function getWeekDates(offset) {
+  const now = new Date();
+  now.setDate(now.getDate() + offset * 7);
+  const day = now.getDay();
+  const mon = new Date(now);
+  mon.setDate(now.getDate() - ((day + 6) % 7));
+  const dates = [];
+  for (let i = 0; i < 7; i++) { const dd = new Date(mon); dd.setDate(mon.getDate() + i); dates.push(dd); }
+  return dates;
+}
+function getMonthDates() {
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const dates = [];
+  for (let i = 1; i <= last.getDate(); i++) dates.push(new Date(now.getFullYear(), now.getMonth(), i));
+  return dates;
+}
+function getLast30() {
+  const dates = [];
+  const now = new Date();
+  for (let i = 29; i >= 0; i--) { const d = new Date(now); d.setDate(now.getDate() - i); dates.push(d); }
+  return dates;
+}
+function stats(habitIdx, dates) {
+  let done = 0;
+  for (const d of dates) { const k = dateKey(d); if (entries[k] && entries[k][habitIdx]) done++; }
+  const pct = dates.length > 0 ? Math.round((done / dates.length) * 100) : 0;
+  return { done, total: dates.length, pct };
+}
+function pctColor(pct, target) {
+  if (target === 0) return "var(--muted)";
+  if (pct >= target) return "var(--green)";
+  if (pct >= target * 0.7) return "var(--amber)";
+  return "var(--red)";
+}
+
+function toggle(dk, hi) {
+  if (!entries[dk]) entries[dk] = {};
+  entries[dk][hi] = !entries[dk][hi];
+  save(STORAGE_ENTRIES, entries);
+  render();
+}
+function addHabit() {
+  const nameEl = document.getElementById("new-habit-name");
+  const freqEl = document.getElementById("new-habit-freq");
+  const name = nameEl.value.trim();
+  if (!name) return;
+  habits.push({ name, freq: freqEl.value, target: 0, emoji: "\u2728" });
+  save(STORAGE_HABITS, habits);
+  nameEl.value = "";
+  render();
+}
+function removeHabit(idx) {
+  habits.splice(idx, 1);
+  save(STORAGE_HABITS, habits);
+  render();
+}
+function moveHabit(idx, dir) {
+  const ni = idx + dir;
+  if (ni < 0 || ni >= habits.length) return;
+  [habits[idx], habits[ni]] = [habits[ni], habits[idx]];
+  save(STORAGE_HABITS, habits);
+  render();
+}
+function resetAll() {
+  if (confirm("Reset all data? This cannot be undone.")) {
+    entries = {};
+    habits = [...HABITS_DEFAULT];
+    save(STORAGE_ENTRIES, entries);
+    save(STORAGE_HABITS, habits);
+    render();
+  }
+}
+
+function render() {
+  const today = todayKey();
+  const weekDates = getWeekDates(weekOffset);
+  const monthDates = getMonthDates();
+  const last30 = getLast30();
+  const displayDates = view === "week" ? weekDates : monthDates;
+  const isMonthView = view === "month";
+
+  const todayDone = habits.filter((_, i) => entries[today] && entries[today][i]).length;
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+
+  let html = `
+  <div class="header">
+    <div class="header-top">
+      <div>
+        <div class="header-title">Daily Tracker</div>
+        <div class="header-date">${dateStr}</div>
+      </div>
+      <div class="score-badge">${todayDone}<span>/${habits.length}</span></div>
+    </div>
+    <div class="controls">
+      <div class="toggle-group">
+        <button class="toggle-btn ${view==="week"?"active":""}" onclick="view='week';weekOffset=0;render()">Week</button>
+        <button class="toggle-btn ${view==="month"?"active":""}" onclick="view='month';weekOffset=0;render()">Month</button>
+      </div>
+      ${view === "week" ? `
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="nav-btn" onclick="weekOffset--;render()">&lsaquo;</button>
+        <button class="today-btn ${weekOffset===0?"current":"offset"}" onclick="weekOffset=0;render()">Today</button>
+        <button class="nav-btn" onclick="weekOffset++;render()">&rsaquo;</button>
+      </div>` : ""}
+      <button class="edit-btn ${editMode?"active":"inactive"}" onclick="editMode=!editMode;render()">${editMode?"Done":"Edit"}</button>
+    </div>
+  </div>
+
+  <div class="grid-wrap">
+  <table>
+  <thead><tr>
+    <th class="habit-cell" style="background:var(--bg);font-size:11px;font-weight:600;color:var(--muted);letter-spacing:0.5px">HABIT</th>
+    ${view==="week" ? `<th style="padding:10px 6px;font-size:10px;font-weight:600;color:var(--muted);letter-spacing:0.5px;min-width:48px;text-align:center">30d</th>` : ""}
+    ${displayDates.map(d => {
+      const k = dateKey(d);
+      const isToday = k === today;
+      return `<th class="day-header ${isMonthView?"month-view":""} ${isToday?"today":""} ${isToday?"today-border":""}">
+        <div class="day-name">${dayName(d)}</div>
+        <div class="day-num">${dayNum(d)}</div>
+        ${!isMonthView ? `<div class="day-month">${monthName(d)}</div>` : ""}
+      </th>`;
+    }).join("")}
+  </tr></thead>
+  <tbody>`;
+
+  habits.forEach((h, hi) => {
+    const s30 = stats(hi, last30);
+    html += `<tr>
+      <td class="habit-cell">
+        <div class="habit-row">
+          ${editMode ? `<div style="display:flex;flex-direction:column;gap:2px;margin-right:4px">
+            <button class="move-btn" onclick="moveHabit(${hi},-1)">\u25B2</button>
+            <button class="move-btn" onclick="moveHabit(${hi},1)">\u25BC</button>
+          </div>` : ""}
+          <span class="habit-emoji">${h.emoji}</span>
+          <div>
+            <div class="habit-name">${h.name}</div>
+            <div class="habit-freq">${h.freq}</div>
+          </div>
+          ${editMode ? `<button class="remove-btn" onclick="removeHabit(${hi})">&times;</button>` : ""}
+        </div>
+      </td>
+      ${view==="week" ? `<td class="stat-cell"><div class="stat-val" style="color:${pctColor(s30.pct, h.target)}">${s30.pct}%</div></td>` : ""}`;
+
+    displayDates.forEach(d => {
+      const k = dateKey(d);
+      const isToday = k === today;
+      const checked = entries[k] && entries[k][hi];
+      const isFuture = k > today;
+      const sizeClass = isMonthView ? " small" : "";
+      const stateClass = isFuture ? " future" : checked ? " checked" : "";
+      html += `<td class="check-cell ${isToday?"today":""}">
+        <button class="check-btn${sizeClass}${stateClass}" ${isFuture?"disabled":""} onclick="toggle('${k}',${hi})">\u2713</button>
+      </td>`;
+    });
+    html += `</tr>`;
+  });
+
+  // Day totals
+  html += `<tr class="total-row"><td class="total-cell">DAY TOTAL</td>`;
+  if (view === "week") html += `<td></td>`;
+  displayDates.forEach(d => {
+    const k = dateKey(d);
+    const isToday = k === today;
+    let total = 0;
+    habits.forEach((_, i) => { if (entries[k] && entries[k][i]) total++; });
+    const pct = Math.round((total / habits.length) * 100);
+    const col = pct >= 70 ? "var(--green)" : pct >= 40 ? "var(--amber)" : total === 0 ? "var(--muted)" : "var(--red)";
+    html += `<td class="total-val ${isToday?"today":""}" style="color:${col}">${total}</td>`;
+  });
+  html += `</tr></tbody></table></div>`;
+
+  // Edit mode: add habit
+  if (editMode) {
+    html += `<div class="add-habit">
+      <input id="new-habit-name" class="add-input" placeholder="New habit name..." />
+      <select id="new-habit-freq" class="add-select">
+        <option value="daily">Daily</option>
+        <option value="3x/week">3x/week</option>
+        <option value="4x/week">4x/week</option>
+        <option value="5x/week">5x/week</option>
+        <option value="weekly">Weekly</option>
+        <option value="monthly">Monthly</option>
+        <option value="occasional">Occasional</option>
+      </select>
+      <button class="add-btn" onclick="addHabit()">Add</button>
+    </div>`;
+  }
+
+  // Summary cards (week view)
+  if (view === "week") {
+    html += `<div class="summary">
+      <div class="summary-title">THIS WEEK</div>
+      <div class="summary-grid">`;
+    habits.forEach((h, hi) => {
+      const ws = stats(hi, weekDates);
+      const ms = stats(hi, monthDates);
+      html += `<div class="summary-card">
+        <div class="card-top">
+          <span style="font-size:16px">${h.emoji}</span>
+          <span class="card-pct" style="color:${pctColor(ws.pct, h.target)}">${ws.pct}%</span>
+        </div>
+        <div class="card-name">${h.name}</div>
+        <div class="card-sub">${ws.done}/${ws.total} this week &middot; ${ms.pct}% month</div>
+        <div class="card-bar"><div class="card-bar-fill" style="width:${ws.pct}%;background:${pctColor(ws.pct, h.target)}"></div></div>
+      </div>`;
+    });
+    html += `</div></div>`;
+  }
+
+  html += `<div class="footer">
+    <div class="footer-hint">Tap circles to log &middot; Edit to add/remove/reorder habits</div>
+    <button class="reset-btn" onclick="resetAll()">Reset All Data</button>
+  </div>`;
+
+  document.getElementById("app").innerHTML = html;
+}
+
+render();
+</script>
+</body>
+</html>
