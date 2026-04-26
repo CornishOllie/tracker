@@ -8,9 +8,9 @@
 <meta name="apple-mobile-web-app-title" content="Tracker">
 <meta name="theme-color" content="#FAFBFC">
 <title>Daily Tracker</title>
-<link rel="manifest" href="/manifest.json">
-<link rel="icon" type="image/svg+xml" href="/icon.svg">
-<link rel="apple-touch-icon" href="/icon.svg">
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" type="image/svg+xml" href="./icon.svg">
+<link rel="apple-touch-icon" href="./icon.svg">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -191,8 +191,24 @@ const HABITS_DEFAULT = [
   { name: "Ebike", freq: "monthly", target: 3, emoji: "\u{1F6B2}" },
 ];
 
-const STORAGE_ENTRIES = "ht_entries_v1";
-const STORAGE_HABITS = "ht_habits_v1";
+// Bumped to v2 on 2026-04-26 to wipe any pre-fitness-drive history. The
+// migration below also explicitly removes the v1 keys from localStorage so
+// they don't sit on disk forever.
+const STORAGE_ENTRIES = "ht_entries_v2";
+const STORAGE_HABITS = "ht_habits_v2";
+
+// Fitness drive begins. Used for the "Day N" header indicator.
+const START_DATE = new Date(2026, 3, 27); // 27 April 2026 (month is 0-indexed)
+const START_DATE_LABEL = "27 April 2026";
+
+(function migrateV1toV2() {
+  try {
+    if (localStorage.getItem("ht_entries_v1") || localStorage.getItem("ht_habits_v1")) {
+      localStorage.removeItem("ht_entries_v1");
+      localStorage.removeItem("ht_habits_v1");
+    }
+  } catch (e) { /* ignore */ }
+})();
 
 function load(key, fallback) {
   try {
@@ -203,6 +219,19 @@ function load(key, fallback) {
 }
 function save(key, data) {
   try { localStorage.setItem(key, JSON.stringify(data)); } catch(e) { console.error("Save error:", e); }
+}
+
+function daysSinceStart() {
+  const now = new Date();
+  const a = new Date(START_DATE.getFullYear(), START_DATE.getMonth(), START_DATE.getDate());
+  const b = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.floor((b - a) / 86400000) + 1; // Day 1 = the start date
+}
+function fitnessDayLabel() {
+  const day = daysSinceStart();
+  if (day < 0) return `Starts in ${Math.abs(day) + 1} days · ${START_DATE_LABEL}`;
+  if (day === 0) return `Starts tomorrow · ${START_DATE_LABEL}`;
+  return `Day ${day} of fitness drive · since ${START_DATE_LABEL}`;
 }
 
 let habits = load(STORAGE_HABITS, HABITS_DEFAULT);
@@ -316,6 +345,7 @@ function render() {
       <div>
         <div class="header-title">Daily Tracker</div>
         <div class="header-date">${dateStr}</div>
+        <div class="header-date" style="color:var(--teal);font-weight:600;margin-top:2px">${fitnessDayLabel()}</div>
       </div>
       <div class="score-badge">${todayDone}<span>/${habits.length}</span></div>
     </div>
