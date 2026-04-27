@@ -185,9 +185,10 @@
   .routine-sub { font-size: 11px; color: var(--muted); margin-bottom: 10px; }
   .move-row { padding: 8px 0; border-top: 1px solid var(--border); display: flex; gap: 10px; align-items: flex-start; }
   .routine-card.daily .move-row { border-top-color: #B5EFE5; }
-  .move-name { font-size: 13px; font-weight: 600; flex: 1; line-height: 1.3; }
+  .move-name { font-size: 13px; font-weight: 600; line-height: 1.3; }
   .move-reps { font-size: 12px; font-weight: 600; color: var(--teal); white-space: nowrap; font-family: 'DM Mono', monospace; }
-  .move-note { font-size: 11px; color: var(--muted); margin-top: 2px; line-height: 1.3; }
+  .move-how { font-size: 12px; color: var(--text); margin-top: 4px; line-height: 1.4; }
+  .move-note { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.3; font-style: italic; }
   .schedule-card {
     background: var(--card); border: 1px solid var(--border); border-radius: 14px;
     padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
@@ -282,40 +283,72 @@ const ROUTINES = [
     id: "mobility", emoji: "\u{1F9D8}", title: "Daily Mobility Starter",
     sub: "2 mins · before any routine or peloton ride", daily: true,
     moves: [
-      { name: "Cat-cow", reps: "30 sec", note: "Knuckles down if wrists hurt on a flat hand." },
-      { name: "World's greatest stretch", reps: "1 each side", note: "Slow, ~30 sec per side." },
-      { name: "Wall pec opener", reps: "30 sec each side", note: "Forearm on door frame, rotate gently away." },
-      { name: "Standing hip circles", reps: "5 each direction", note: "" },
+      { name: "Cat-cow", reps: "30 sec",
+        how: "On all fours: inhale, drop belly + lift chest. Exhale, round back up to ceiling. Slow, with breath.",
+        note: "Knuckles down if wrists hurt on a flat hand." },
+      { name: "World's greatest stretch", reps: "1 each side, ~30 sec",
+        how: "High lunge. Drop opposite elbow inside the front foot, then twist that arm straight up to the ceiling. Eyes follow your hand.",
+        note: "" },
+      { name: "Wall pec opener", reps: "30 sec each side",
+        how: "Forearm flat on a door frame, elbow at shoulder height (like a stop sign). Rotate body away to feel chest stretch.",
+        note: "Stop short of any pinching." },
+      { name: "Standing hip circles", reps: "5 each direction",
+        how: "Stand on one leg. Lift the other knee to 90°. Trace big slow circles with that knee — out, back, around.",
+        note: "" },
     ],
   },
   {
     id: "lower", emoji: "\u{1F9B5}", title: "Routine A · Lower Body",
     sub: "5–8 mins · 2× per week",
     moves: [
-      { name: "Goblet squat (10kg KB)", reps: "8 × 2 sets", note: "Hold KB at chest. Only as deep as feels good." },
-      { name: "Romanian deadlift (10kg KB)", reps: "8 × 2 sets", note: "Hip hinge, soft knees. Stop where hamstrings tighten." },
-      { name: "Glute bridge (10kg on hips)", reps: "12 × 2 sets", note: "Drive through heels. Pause 2 sec at top." },
-      { name: "Calf raises (bodyweight)", reps: "15 × 1", note: "Optional finisher." },
+      { name: "Goblet squat (10kg KB)", reps: "8 × 2 sets",
+        how: "Hold KB vertically at chest, elbows tucked. Sit down between your knees (not back), drive up through heels. Chest tall.",
+        note: "Only as deep as feels good — even quarter-depth is gold in week 1." },
+      { name: "Romanian deadlift (10kg KB)", reps: "8 × 2 sets",
+        how: "Slight knee bend. Push hips BACK like closing a car door with your bum. KB slides down the front of your legs.",
+        note: "It's a hinge, not a squat. Stop where hamstrings tighten." },
+      { name: "Glute bridge (10kg on hips)", reps: "12 × 2 sets",
+        how: "On back, KB on hip crease. Drive heels into floor, lift hips to a straight line knees-to-shoulders. Squeeze glutes.",
+        note: "Pause 2 sec at the top, lower slowly." },
+      { name: "Calf raises (bodyweight)", reps: "15 × 1",
+        how: "Hand on wall for balance. Rise up onto the balls of your feet as high as you can, hold 1 sec, lower slowly.",
+        note: "Optional finisher." },
     ],
   },
   {
     id: "pull", emoji: "\u{1F4AA}", title: "Routine B · Upper Pull",
     sub: "5–8 mins · 2× per week",
     moves: [
-      { name: "Suspension row", reps: "8 × 2 sets", note: "Neutral grip (palms facing). Walk feet forward = harder." },
-      { name: "Bicep curl (5kg)", reps: "10 × 2 sets", note: "Slow tempo. Drop to 3lb if 5kg's too much." },
-      { name: "Suspension reverse fly", reps: "10 × 2 sets", note: "Squeeze shoulder blades. Rear delts, postural gold." },
-      { name: "Dead hang", reps: "10–20 sec × 2", note: "Feet on floor for support. Skip if it pinches." },
+      { name: "Suspension row", reps: "8 × 2 sets",
+        how: "Hold both straps, palms facing each other. Lean back, body straight. Pull chest to hands by squeezing shoulder blades.",
+        note: "Walk feet forward = harder, more upright = easier. Most wrist-friendly upper-body move you can do." },
+      { name: "Bicep curl (5kg)", reps: "10 × 2 sets",
+        how: "Elbows tucked at your sides. Curl weight up to your shoulder, palm-up at the top. Slow lower.",
+        note: "Drop to 3lb if 5kg's too much. No swinging — that means it's too heavy." },
+      { name: "Suspension reverse fly", reps: "10 × 2 sets",
+        how: "Hold straps, palms facing. Lean back slightly. Arms straight out front. Open wide to a T, squeezing shoulder blades.",
+        note: "Less lean than rows — this move is harder. Rear-delt gold for posture." },
+      { name: "Dead hang", reps: "10–20 sec × 2",
+        how: "Hang from the bar with feet ON the floor or a chair for support — you're not lifting bodyweight, just decompressing.",
+        note: "Skip if it pinches." },
     ],
   },
   {
     id: "core", emoji: "\u{1FAA8}", title: "Routine C · Core & Stability",
     sub: "5 mins · 2–3× per week",
     moves: [
-      { name: "Dead bug", reps: "10 each side × 2", note: "Lying on back. Opposite arm + leg extend slowly." },
-      { name: "Side-lying leg raise", reps: "12 each side × 2", note: "Top leg lifts. Glute medius work." },
-      { name: "Glute bridge with march", reps: "5 each side × 2", note: "Bridge held at top, march knees to chest." },
-      { name: "Standing goblet hold (5kg)", reps: "30 sec × 1", note: "Just stand and hold. Anti-tip core." },
+      { name: "Dead bug", reps: "10 each side × 2",
+        how: "On back, arms up, knees at 90° (shins parallel to floor). Press lower back into mat. Slowly extend opposite arm+leg, return, switch.",
+        note: "Lower back never leaves the mat — that's the whole point." },
+      { name: "Side-lying leg raise", reps: "12 each side × 2",
+        how: "Lie on your side in a straight line. Lift the top leg straight up to ~45°. Pause, lower slowly.",
+        note: "Feel it in the side of your bum (glute medius)." },
+      { name: "Glute bridge with march", reps: "5 each side × 2",
+        how: "Bridge to the top, hold there. Slowly march one knee toward chest, back down, other side. Hips stay up + level.",
+        note: "Don't let hips drop or twist." },
+      { name: "Standing goblet hold (5kg)", reps: "30 sec × 1",
+        how: "Hold 5kg at your chest like a goblet. Stand tall, feet shoulder-width. Brace core (\"ready to be punched\"). Just hold.",
+        note: "Surprisingly hard once you breathe properly." },
     ],
   },
 ];
@@ -587,11 +620,14 @@ function renderRoutines() {
       <div class="routine-sub">${r.sub}</div>`;
     r.moves.forEach(m => {
       h += `<div class="move-row">
-        <div style="flex:1">
-          <div class="move-name">${m.name}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">
+            <div class="move-name">${m.name}</div>
+            <div class="move-reps">${m.reps}</div>
+          </div>
+          ${m.how ? `<div class="move-how">${m.how}</div>` : ''}
           ${m.note ? `<div class="move-note">${m.note}</div>` : ''}
         </div>
-        <div class="move-reps">${m.reps}</div>
       </div>`;
     });
     h += `</div>`;
