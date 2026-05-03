@@ -935,7 +935,7 @@ render();
       localStorage.removeItem(SKIP_KEY);
       gate.style.display = 'none';
       updateCloudBtn();
-      bootstrap();
+      bootstrap(true); // connectMode — so first sign-in chooses the right side
     };
     document.getElementById('gateSkipBtn').onclick = () => {
       localStorage.setItem(SKIP_KEY, '1');
@@ -959,7 +959,23 @@ render();
 
   let pulling = false; // suppress saveCloud during a pull from realtime
 
-  async function loadCloud() {
+  function localHasData() {
+    return (
+      (typeof entries !== 'undefined' && Object.keys(entries).length > 0) ||
+      (typeof todos !== 'undefined' && todos.length > 0)
+    );
+  }
+  function cloudHasData(d) {
+    return (
+      (d?.entries && Object.keys(d.entries).length > 0) ||
+      (d?.todos && d.todos.length > 0)
+    );
+  }
+
+  // connectMode = true when the device is just signing in for the first time;
+  // we should compare local vs cloud and prefer whichever has data, asking
+  // only if both do. Subsequent realtime calls always pull (we're in sync).
+  async function loadCloud(connectMode = false) {
     const code = getCode();
     if (!code) return;
 
@@ -973,10 +989,38 @@ render();
       return;
     }
     if (!data) {
-      // First device with this code — push local state up.
+      // No row yet — push local up.
       await saveCloud();
       return;
     }
+
+    if (connectMode) {
+      const local = localHasData();
+      const cloud = cloudHasData(data);
+      if (local && !cloud) {
+        // Local has data, cloud is empty — push local up, don't wipe.
+        console.log('Pushing local data to empty cloud row');
+        await saveCloud();
+        return;
+      }
+      if (local && cloud) {
+        const localDays = Object.keys(entries).length;
+        const cloudDays = Object.keys(data.entries || {}).length;
+        const useCloud = confirm(
+          `Both this device and the cloud have tracked data.\n\n` +
+          `This device: ${localDays} day(s) of entries\n` +
+          `Cloud:       ${cloudDays} day(s) of entries\n\n` +
+          `OK    = pull cloud → here (replaces this device's data)\n` +
+          `Cancel = push here → cloud (overwrites cloud)`
+        );
+        if (!useCloud) {
+          await saveCloud();
+          return;
+        }
+        // else fall through to pull
+      }
+    }
+
     pulling = true;
     try {
       if (data.habits) {
@@ -1031,9 +1075,9 @@ render();
       .subscribe();
   }
 
-  function bootstrap() {
+  function bootstrap(connectMode = false) {
     if (!getCode()) return;
-    loadCloud().then(subscribeRealtime);
+    loadCloud(connectMode).then(subscribeRealtime);
   }
 
   // Wire the floating cloud button.
