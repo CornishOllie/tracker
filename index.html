@@ -1055,6 +1055,29 @@ render();
   } else if (!isSkipped()) {
     setTimeout(showGate, 200);
   }
+
+  // One-shot import helper for migrating off another device. Paste the JSON
+  // blob from the old URL into the console: __trackerImport(`<paste>`).
+  // Force-pushes the imported state to the cloud, overwriting whatever was
+  // there for your sync code.
+  window.__trackerImport = function(jsonString) {
+    try {
+      const d = typeof jsonString === 'string' ? JSON.parse(jsonString) : jsonString;
+      if (d.h) localStorage.setItem(STORAGE_HABITS, d.h);
+      if (d.e) localStorage.setItem(STORAGE_ENTRIES, d.e);
+      if (d.t) localStorage.setItem(STORAGE_TODOS, d.t);
+      habits = JSON.parse(localStorage.getItem(STORAGE_HABITS) || 'null') || HABITS_DEFAULT;
+      entries = JSON.parse(localStorage.getItem(STORAGE_ENTRIES) || '{}');
+      todos = JSON.parse(localStorage.getItem(STORAGE_TODOS) || '[]');
+      saveCloud();
+      if (typeof render === 'function') render();
+      console.log('Imported. Habits:', habits.length, 'Entry days:', Object.keys(entries).length, 'Todos:', todos.length);
+      return 'ok';
+    } catch (e) {
+      console.error('Import failed', e);
+      return 'failed: ' + e.message;
+    }
+  };
 })();
 </script>
 </body>
