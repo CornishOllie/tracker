@@ -12,6 +12,7 @@
 <link rel="icon" type="image/svg+xml" href="./icon.svg">
 <link rel="apple-touch-icon" href="./icon.svg">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   :root {
     --teal: #00A896;
@@ -238,6 +239,18 @@
 </style>
 </head>
 <body>
+<div id="gate" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(15,23,42,.92);align-items:center;justify-content:center;padding:20px;font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif">
+  <div style="background:#fff;border-radius:14px;padding:24px;max-width:380px;width:100%">
+    <div style="font-size:22px;font-weight:700;color:#0F172A;letter-spacing:-.5px">Sync across devices</div>
+    <div style="font-size:13px;color:#64748B;margin-top:6px;line-height:1.4">Type a sync code to link this device to your tracker. Same code on every device of yours = same data. Pick something memorable; it stays on your devices only.</div>
+    <input id="gateCodeInput" type="text" placeholder="sync code" autocomplete="off" autocapitalize="off" autocorrect="off" style="width:100%;margin-top:18px;padding:12px 14px;border-radius:10px;border:1px solid #E2E8F0;font-size:16px;background:#FAFBFC;outline:none;font-family:'DM Mono',ui-monospace,monospace">
+    <button id="gateBtn" style="width:100%;margin-top:14px;padding:12px;border-radius:10px;background:#0F172A;color:#fff;font-size:14px;font-weight:600;border:none;cursor:pointer">Continue</button>
+    <button id="gateSkipBtn" style="width:100%;margin-top:6px;padding:8px;background:none;color:#94A3B8;font-size:12px;border:none;cursor:pointer">Skip — just this device</button>
+    <button id="gateDisconnectBtn" style="display:none;width:100%;margin-top:6px;padding:8px;background:none;color:#DC2626;font-size:12px;border:none;cursor:pointer">Disconnect</button>
+    <button id="gateCloseBtn" style="display:none;width:100%;margin-top:4px;padding:6px;background:none;color:#94A3B8;font-size:12px;border:none;cursor:pointer">Close</button>
+  </div>
+</div>
+<button id="cloudBtn" type="button" aria-label="Sync settings" style="display:none;position:fixed;top:calc(env(safe-area-inset-top) + 12px);right:14px;z-index:150;background:rgba(15,23,42,.06);color:#0F172A;padding:6px 10px;border-radius:14px;font-size:11px;font-weight:600;border:1px solid rgba(15,23,42,.12);cursor:pointer;display:flex;align-items:center;gap:5px;font-family:'DM Sans',sans-serif"><span id="cloudBtnIcon">☁️</span><span id="cloudBtnText">Sync</span></button>
 <div id="app"></div>
 <script>
 const HABITS_DEFAULT = [
@@ -524,6 +537,35 @@ function pctColor(pct, target) {
   return "var(--red)";
 }
 
+// Average tracked activities per day since Monday of the current week.
+// Days = Mon..today inclusive (1 on Monday morning, 7 on Sunday).
+const WEEK_TARGET_PER_DAY = 14;
+function weekAverageSinceMonday() {
+  const now = new Date();
+  const day = now.getDay();           // 0=Sun, 1=Mon...
+  const offset = (day + 6) % 7;       // distance back to Monday: 0 if Mon, 6 if Sun
+  let total = 0;
+  for (let i = 0; i <= offset; i++) {
+    const d = new Date(now);
+    d.setDate(now.getDate() - i);
+    const k = dateKey(d);
+    if (entries[k]) total += Object.values(entries[k]).filter(v => v).length;
+  }
+  const days = offset + 1;
+  return { total, days, avg: total / days };
+}
+function weekAverageLine() {
+  const { avg } = weekAverageSinceMonday();
+  const t = WEEK_TARGET_PER_DAY;
+  const diff = avg - t;
+  const sign = diff >= 0 ? "+" : "";
+  let color;
+  if (avg >= t + 2)  color = "var(--green)";   // healthily ahead
+  else if (avg >= t) color = "var(--amber)";   // at target, not yet healthy
+  else               color = "var(--red)";     // behind
+  return { line: `Avg ${avg.toFixed(1)}/day · ${sign}${diff.toFixed(1)} vs target ${t}`, color };
+}
+
 function toggle(dk, hi) {
   if (!entries[dk]) entries[dk] = {};
   entries[dk][hi] = !entries[dk][hi];
@@ -571,6 +613,7 @@ function renderTracker() {
   const isMonthView = view === "month";
 
   const todayDone = habits.filter((_, i) => entries[today] && entries[today][i]).length;
+  const wa = weekAverageLine();
 
   const now = new Date();
   const dateStr = now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
@@ -582,6 +625,7 @@ function renderTracker() {
         <div class="header-title">Daily Tracker</div>
         <div class="header-date">${dateStr}</div>
         <div class="header-date" style="color:var(--teal);font-weight:600;margin-top:2px">${fitnessDayLabel()}</div>
+        <div class="header-date" style="color:${wa.color};font-weight:600;margin-top:2px">${wa.line}</div>
       </div>
       <div class="score-badge">${todayDone}<span>/${habits.length}</span></div>
     </div>
@@ -835,6 +879,183 @@ function render() {
 }
 
 render();
+</script>
+<script>
+// =====================================================================
+// Cloud sync (Supabase) — single-user. Type a sync code on each device
+// and they share habits, entries, and todos. Skip and the app behaves
+// exactly as before.
+// =====================================================================
+(function(){
+  const SUPABASE_URL = 'https://fzmkvpwylvepakksrrxw.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_F61fh5y4bn4lURto-w4m-g_PcqAZSNq';
+  const CODE_KEY = 'tracker-sync-code';
+  const SKIP_KEY = 'tracker-skip-cloud';
+
+  if (!window.supabase) return;
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: { persistSession: false }
+  });
+
+  const getCode = () => localStorage.getItem(CODE_KEY) || '';
+  const setCode = (c) => localStorage.setItem(CODE_KEY, c);
+  const isSkipped = () => localStorage.getItem(SKIP_KEY) === '1';
+
+  function updateCloudBtn() {
+    const btn = document.getElementById('cloudBtn');
+    const icon = document.getElementById('cloudBtnIcon');
+    const text = document.getElementById('cloudBtnText');
+    if (!btn) return;
+    btn.style.display = 'flex';
+    if (getCode()) {
+      icon.textContent = '☁️';
+      text.textContent = 'Synced';
+      btn.style.background = 'rgba(15,23,42,.06)';
+    } else {
+      icon.textContent = '⛅';
+      text.textContent = 'Connect';
+      btn.style.background = 'rgba(15,23,42,.12)';
+    }
+  }
+
+  function showGate() {
+    const gate = document.getElementById('gate');
+    const connected = !!getCode();
+    gate.style.display = 'flex';
+    document.getElementById('gateCodeInput').value = connected ? getCode() : '';
+    document.getElementById('gateSkipBtn').style.display = connected ? 'none' : 'block';
+    document.getElementById('gateDisconnectBtn').style.display = connected ? 'block' : 'none';
+    document.getElementById('gateCloseBtn').style.display = connected ? 'block' : 'none';
+    document.getElementById('gateCodeInput').focus();
+
+    document.getElementById('gateBtn').onclick = () => {
+      const code = document.getElementById('gateCodeInput').value.trim();
+      if (code.length < 4) { alert('Sync code needs at least 4 characters.'); return; }
+      setCode(code);
+      localStorage.removeItem(SKIP_KEY);
+      gate.style.display = 'none';
+      updateCloudBtn();
+      bootstrap();
+    };
+    document.getElementById('gateSkipBtn').onclick = () => {
+      localStorage.setItem(SKIP_KEY, '1');
+      gate.style.display = 'none';
+      updateCloudBtn();
+    };
+    document.getElementById('gateDisconnectBtn').onclick = () => {
+      if (!confirm('Disconnect from cloud sync? Your local data stays on this device.')) return;
+      localStorage.removeItem(CODE_KEY);
+      localStorage.setItem(SKIP_KEY, '1');
+      gate.style.display = 'none';
+      updateCloudBtn();
+    };
+    document.getElementById('gateCloseBtn').onclick = () => {
+      gate.style.display = 'none';
+    };
+    document.getElementById('gateCodeInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('gateBtn').click();
+    });
+  }
+
+  let pulling = false; // suppress saveCloud during a pull from realtime
+
+  async function loadCloud() {
+    const code = getCode();
+    if (!code) return;
+
+    const { data, error } = await sb
+      .from('tracker_state')
+      .select('habits,entries,todos')
+      .eq('sync_code', code)
+      .maybeSingle();
+    if (error) {
+      console.warn('cloud load failed', error);
+      return;
+    }
+    if (!data) {
+      // First device with this code — push local state up.
+      await saveCloud();
+      return;
+    }
+    pulling = true;
+    try {
+      if (data.habits) {
+        habits = data.habits;
+        try { localStorage.setItem(STORAGE_HABITS, JSON.stringify(habits)); } catch(e) {}
+      }
+      if (data.entries) {
+        entries = data.entries;
+        try { localStorage.setItem(STORAGE_ENTRIES, JSON.stringify(entries)); } catch(e) {}
+      }
+      if (data.todos) {
+        todos = data.todos;
+        try { localStorage.setItem(STORAGE_TODOS, JSON.stringify(todos)); } catch(e) {}
+      }
+      if (typeof render === 'function') render();
+    } finally {
+      pulling = false;
+    }
+  }
+
+  async function saveCloud() {
+    const code = getCode();
+    if (!code) return;
+    const { error } = await sb
+      .from('tracker_state')
+      .upsert({
+        sync_code: code,
+        habits: typeof habits !== 'undefined' ? habits : null,
+        entries: typeof entries !== 'undefined' ? entries : null,
+        todos: typeof todos !== 'undefined' ? todos : null,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'sync_code' });
+    if (error) console.warn('cloud save failed', error);
+  }
+
+  // Patch save() so writes to localStorage also push to the cloud.
+  // The original save() is the only path through which state changes
+  // hit disk in the existing app.
+  const origSave = window.save;
+  window.save = function(key, data) {
+    origSave(key, data);
+    if (!pulling) saveCloud();
+  };
+
+  function subscribeRealtime() {
+    const code = getCode();
+    if (!code) return;
+    sb.channel('tracker-state-' + code)
+      .on('postgres_changes',
+          { event: '*', schema: 'public', table: 'tracker_state', filter: `sync_code=eq.${code}` },
+          () => loadCloud())
+      .subscribe();
+  }
+
+  function bootstrap() {
+    if (!getCode()) return;
+    loadCloud().then(subscribeRealtime);
+  }
+
+  // Wire the floating cloud button.
+  function wireBtn() {
+    const btn = document.getElementById('cloudBtn');
+    if (btn) {
+      btn.onclick = showGate;
+      updateCloudBtn();
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', wireBtn);
+  } else {
+    wireBtn();
+  }
+
+  if (getCode()) {
+    bootstrap();
+  } else if (!isSkipped()) {
+    setTimeout(showGate, 200);
+  }
+})();
 </script>
 </body>
 </html>
