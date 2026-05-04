@@ -236,6 +236,40 @@
     font-size: 11px; color: var(--muted); margin-top: 16px; line-height: 1.4; padding: 8px 12px;
     background: var(--teal-light); border-radius: 8px; color: #0D7466;
   }
+  /* Mortgage tab */
+  .mort-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 18px; margin-bottom: 14px; }
+  .mort-card h2 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 14px; }
+  .mort-input-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .mort-input-row:last-child { margin-bottom: 0; }
+  .mort-label { font-size: 13px; font-weight: 600; flex: 1; min-width: 110px; }
+  .mort-num-input { font-size: 20px; font-weight: 700; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; width: 130px; text-align: right; background: var(--bg); color: var(--text); font-family: 'DM Mono', ui-monospace, monospace; }
+  .mort-num-input:focus { outline: none; border-color: var(--teal); }
+  .mort-slider { flex: 1; -webkit-appearance: none; appearance: none; height: 6px; border-radius: 3px; background: var(--border); outline: none; }
+  .mort-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; border-radius: 50%; background: var(--teal); cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+  .mort-slider::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; background: var(--teal); cursor: pointer; border: none; }
+  .mort-line { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; font-size: 14px; }
+  .mort-line + .mort-line { border-top: 1px solid var(--border); }
+  .mort-line .label { color: var(--muted); }
+  .mort-line .value { font-family: 'DM Mono', ui-monospace, monospace; font-weight: 600; }
+  .mort-total { display: flex; justify-content: space-between; align-items: baseline; padding: 12px 0 0; margin-top: 6px; border-top: 2px solid var(--text); font-size: 15px; font-weight: 700; }
+  .mort-total .value { font-family: 'DM Mono', ui-monospace, monospace; font-size: 22px; }
+  .mort-headline { font-size: 13px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
+  .mort-big { font-size: 32px; font-weight: 800; font-family: 'DM Mono', ui-monospace, monospace; color: var(--teal); letter-spacing: -0.02em; }
+  .mort-small { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .mort-grid { display: grid; grid-template-columns: 80px 1fr 100px; gap: 0; margin-top: 8px; }
+  .mort-grid .row { display: contents; }
+  .mort-grid .cell { padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; }
+  .mort-grid .cell.term { font-weight: 700; }
+  .mort-grid .cell.bar { padding: 12px 4px; }
+  .mort-grid .cell.amount { font-family: 'DM Mono', ui-monospace, monospace; font-weight: 700; justify-content: flex-end; font-size: 15px; }
+  .mort-grid .row.fits .cell.amount { color: var(--teal); }
+  .mort-grid .row.over .cell.amount { color: #DC2626; }
+  .mort-bar-track { width: 100%; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+  .mort-bar-fill { height: 100%; background: var(--teal); border-radius: 4px; }
+  .mort-bar-fill.over { background: #DC2626; }
+  .mort-explain { font-size: 12px; color: var(--muted); line-height: 1.4; margin-top: 4px; }
+  .mort-pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; background: var(--teal-light); color: #008B7B; margin-left: 6px; }
+  .mort-pill.warn { background: #FEF3C7; color: #92400E; }
 </style>
 </head>
 <body>
@@ -340,7 +374,93 @@ let entries = load(STORAGE_ENTRIES, {});
   if (modified) save(STORAGE_HABITS, habits);
 })();
 let view = "week";
-let appTab = "tracker"; // tab navigation: "tracker" | "routines" | "todos"
+let appTab = "tracker"; // tab navigation: "tracker" | "routines" | "todos" | "mortgage"
+
+// =====================================================================
+// Mortgage calculator state
+// =====================================================================
+const STORAGE_MORTGAGE = "ht_mortgage_v1";
+const MORTGAGE_DEFAULTS = {
+  salePrice: 600000,
+  buyPrice: 620000,
+  existingMortgage: 53000,
+  newRate: 4.0,
+  maxMonthly: 2500
+};
+let mortgage = (() => {
+  try {
+    const raw = localStorage.getItem(STORAGE_MORTGAGE);
+    if (raw) return { ...MORTGAGE_DEFAULTS, ...JSON.parse(raw) };
+  } catch (e) {}
+  return { ...MORTGAGE_DEFAULTS };
+})();
+function saveMortgage() {
+  try { localStorage.setItem(STORAGE_MORTGAGE, JSON.stringify(mortgage)); } catch (e) {}
+}
+function setMortgage(field, value) {
+  const n = typeof value === 'string' ? parseFloat(value) : value;
+  if (Number.isFinite(n)) {
+    mortgage[field] = n;
+    saveMortgage();
+    render();
+  }
+}
+
+// UK stamp duty — standard residential, replacing primary residence
+// (no first-time-buyer relief, no additional-dwelling surcharge).
+// Rates as of April 2025 (revert from temporary 2022-2025 thresholds).
+function ukStampDuty(price) {
+  let duty = 0;
+  if (price > 1500000) duty += (price - 1500000) * 0.12;
+  if (price > 925000)  duty += (Math.min(price, 1500000) - 925000) * 0.10;
+  if (price > 250000)  duty += (Math.min(price, 925000) - 250000) * 0.05;
+  if (price > 125000)  duty += (Math.min(price, 250000) - 125000) * 0.02;
+  return Math.max(0, duty);
+}
+
+// Estate-agent fee on sale (typical high-street, 1.2% + 20% VAT = 1.44%).
+function estateAgentFee(salePrice) { return salePrice * 0.0144; }
+
+// Standard moving costs — rough but realistic UK 2026 averages.
+const FEES = {
+  solicitorSell: 1750,
+  solicitorBuy: 1750,
+  survey: 800,           // HomeBuyer survey on a £600-650k property
+  mortgageArrangement: 1499,
+  removal: 1200,
+  landRegistry: 295
+};
+
+function netSaleProceeds() {
+  return mortgage.salePrice - mortgage.existingMortgage - estateAgentFee(mortgage.salePrice) - FEES.solicitorSell;
+}
+function buyOutOfPocket() {
+  return ukStampDuty(mortgage.buyPrice) + FEES.solicitorBuy + FEES.survey + FEES.mortgageArrangement + FEES.removal + FEES.landRegistry;
+}
+function depositAvailable() {
+  return netSaleProceeds() - buyOutOfPocket();
+}
+function newMortgageNeeded() {
+  return Math.max(0, mortgage.buyPrice - depositAvailable());
+}
+
+// Standard repayment-mortgage monthly payment.
+function monthlyPayment(principal, annualRate, years) {
+  const r = (annualRate / 100) / 12;
+  const n = years * 12;
+  if (n === 0) return principal;
+  if (r === 0) return principal / n;
+  return principal * r * Math.pow(1 + r, n) / (Math.pow(1 + r, n) - 1);
+}
+function totalCostOf(principal, annualRate, years) {
+  return monthlyPayment(principal, annualRate, years) * years * 12;
+}
+function fmtGbp(n) {
+  return '£' + Math.round(n).toLocaleString('en-GB');
+}
+function fmtGbpDecimal(n) {
+  return '£' + n.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
 
 const STORAGE_TODOS = "ht_todos_v1";
 let todos = load(STORAGE_TODOS, []);
@@ -856,6 +976,175 @@ function renderTodos() {
   return h;
 }
 
+function renderMortgage() {
+  const m = mortgage;
+  const stampDuty = ukStampDuty(m.buyPrice);
+  const agentFee = estateAgentFee(m.salePrice);
+  const moveOut = buyOutOfPocket();
+  const netSale = netSaleProceeds();
+  const deposit = depositAvailable();
+  const newLoan = newMortgageNeeded();
+  const ltv = m.buyPrice > 0 ? (newLoan / m.buyPrice) * 100 : 0;
+
+  // Find shortest term that keeps monthly under maxMonthly
+  const terms = [10, 15, 20, 25, 30, 35];
+  const scenarios = terms.map((y) => {
+    const p = monthlyPayment(newLoan, m.newRate, y);
+    return { years: y, monthly: p, total: p * y * 12, fits: p <= m.maxMonthly };
+  });
+  const shortestFit = scenarios.find((s) => s.fits);
+  const maxBarMonthly = Math.max(m.maxMonthly * 1.6, ...scenarios.map((s) => s.monthly));
+
+  let h = `<div class="app-header">
+    <div class="app-title">\u{1F3E0} Mortgage</div>
+    <div class="app-sub">Move-house calculator</div>
+  </div>
+  <div style="padding: 16px;">`;
+
+  // ---- Inputs ----
+  h += `<div class="mort-card">
+    <h2>Inputs</h2>
+
+    <div class="mort-input-row">
+      <div class="mort-label">Sale price (your house)</div>
+      <input class="mort-num-input" type="number" min="100000" max="1500000" step="5000"
+        value="${m.salePrice}" onchange="setMortgage('salePrice', this.value)">
+    </div>
+    <input class="mort-slider" type="range" min="500000" max="750000" step="5000"
+      value="${m.salePrice}" oninput="setMortgage('salePrice', this.value)" style="margin-bottom:14px">
+
+    <div class="mort-input-row">
+      <div class="mort-label">Buy price (new house)</div>
+      <input class="mort-num-input" type="number" min="100000" max="1500000" step="5000"
+        value="${m.buyPrice}" onchange="setMortgage('buyPrice', this.value)">
+    </div>
+    <input class="mort-slider" type="range" min="500000" max="750000" step="5000"
+      value="${m.buyPrice}" oninput="setMortgage('buyPrice', this.value)" style="margin-bottom:14px">
+
+    <div class="mort-input-row">
+      <div class="mort-label">Existing mortgage to clear</div>
+      <input class="mort-num-input" type="number" min="0" max="500000" step="500"
+        value="${m.existingMortgage}" onchange="setMortgage('existingMortgage', this.value)">
+    </div>
+
+    <div class="mort-input-row">
+      <div class="mort-label">New rate (%)</div>
+      <input class="mort-num-input" type="number" min="0" max="10" step="0.1"
+        value="${m.newRate}" onchange="setMortgage('newRate', this.value)">
+    </div>
+    <input class="mort-slider" type="range" min="2" max="7" step="0.05"
+      value="${m.newRate}" oninput="setMortgage('newRate', this.value)" style="margin-bottom:14px">
+
+    <div class="mort-input-row">
+      <div class="mort-label">Max monthly</div>
+      <input class="mort-num-input" type="number" min="500" max="10000" step="50"
+        value="${m.maxMonthly}" onchange="setMortgage('maxMonthly', this.value)">
+    </div>
+  </div>`;
+
+  // ---- Sale side ----
+  h += `<div class="mort-card">
+    <h2>Selling your house</h2>
+    <div class="mort-line"><span class="label">Sale price</span><span class="value">${fmtGbp(m.salePrice)}</span></div>
+    <div class="mort-line"><span class="label">– Estate agent (1.2% + VAT)</span><span class="value">−${fmtGbp(agentFee)}</span></div>
+    <div class="mort-line"><span class="label">– Solicitor (sale)</span><span class="value">−${fmtGbp(FEES.solicitorSell)}</span></div>
+    <div class="mort-line"><span class="label">– Pay off existing mortgage</span><span class="value">−${fmtGbp(m.existingMortgage)}</span></div>
+    <div class="mort-total"><span>Net cash from sale</span><span class="value">${fmtGbp(netSale)}</span></div>
+  </div>`;
+
+  // ---- Buy side / move costs ----
+  h += `<div class="mort-card">
+    <h2>Cost of moving in</h2>
+    <div class="mort-line"><span class="label">Stamp duty (£${m.buyPrice.toLocaleString('en-GB')} home)</span><span class="value">${fmtGbp(stampDuty)}</span></div>
+    <div class="mort-line"><span class="label">Solicitor (purchase)</span><span class="value">${fmtGbp(FEES.solicitorBuy)}</span></div>
+    <div class="mort-line"><span class="label">HomeBuyer survey</span><span class="value">${fmtGbp(FEES.survey)}</span></div>
+    <div class="mort-line"><span class="label">Mortgage arrangement fee</span><span class="value">${fmtGbp(FEES.mortgageArrangement)}</span></div>
+    <div class="mort-line"><span class="label">Removal company</span><span class="value">${fmtGbp(FEES.removal)}</span></div>
+    <div class="mort-line"><span class="label">Land Registry</span><span class="value">${fmtGbp(FEES.landRegistry)}</span></div>
+    <div class="mort-total"><span>Cash needed to complete</span><span class="value">${fmtGbp(moveOut)}</span></div>
+  </div>`;
+
+  // ---- Resulting mortgage ----
+  const ltvWarn = ltv > 90;
+  h += `<div class="mort-card">
+    <div class="mort-headline">New mortgage needed</div>
+    <div class="mort-big">${fmtGbp(newLoan)}</div>
+    <div class="mort-small">
+      Deposit ${fmtGbp(deposit)} · LTV ${ltv.toFixed(1)}%
+      ${ltvWarn ? '<span class="mort-pill warn">High LTV</span>' : ''}
+    </div>
+    <div class="mort-explain" style="margin-top:10px">
+      Net cash from sale (${fmtGbp(netSale)}) minus move-in costs (${fmtGbp(moveOut)}) = ${fmtGbp(deposit)} towards deposit. Buy price ${fmtGbp(m.buyPrice)} − deposit = mortgage above.
+    </div>
+  </div>`;
+
+  // ---- Monthly payments ----
+  h += `<div class="mort-card">
+    <h2>Monthly payments at ${m.newRate}%</h2>
+    <div class="mort-explain" style="margin-bottom:8px">
+      Target: under <strong>${fmtGbp(m.maxMonthly)}/mth</strong>${shortestFit ? ' — fits from <strong>' + shortestFit.years + ' years</strong>' : ' — doesn\'t fit at any term shown'}.
+    </div>
+    <div class="mort-grid">`;
+  for (const s of scenarios) {
+    const pct = Math.min(100, (s.monthly / maxBarMonthly) * 100);
+    const fitClass = s.fits ? 'fits' : 'over';
+    const barClass = s.fits ? '' : 'over';
+    h += `<div class="row ${fitClass}">
+      <div class="cell term">${s.years}y</div>
+      <div class="cell bar"><div class="mort-bar-track"><div class="mort-bar-fill ${barClass}" style="width:${pct}%"></div></div></div>
+      <div class="cell amount">${fmtGbp(s.monthly)}</div>
+    </div>`;
+  }
+  h += `</div>
+    <div class="mort-explain" style="margin-top:10px">
+      Total interest paid varies a lot by term — at 25 years you pay ${fmtGbp(scenarios[3].total - newLoan)} interest, at 15 years only ${fmtGbp(scenarios[1].total - newLoan)}.
+    </div>
+  </div>`;
+
+  // ---- Quick what-if comparison ----
+  const scenarios2 = [
+    { sale: 600000, buy: 620000, label: 'Current pick' },
+    { sale: 590000, buy: 620000, label: 'Sale below ask' },
+    { sale: 600000, buy: 610000, label: 'Buy below ask' },
+    { sale: 590000, buy: 610000, label: 'Both below ask' },
+    { sale: 650000, buy: 650000, label: 'Like-for-like (agent value)' }
+  ];
+  h += `<div class="mort-card">
+    <h2>Quick what-ifs (25-year mortgage)</h2>
+    <div class="mort-explain" style="margin-bottom:8px">Saved inputs aside — these recompute against the snapshot below.</div>`;
+  for (const s of scenarios2) {
+    const sd = ukStampDuty(s.buy);
+    const ag = estateAgentFee(s.sale);
+    const moveCosts = sd + FEES.solicitorBuy + FEES.survey + FEES.mortgageArrangement + FEES.removal + FEES.landRegistry;
+    const net = s.sale - m.existingMortgage - ag - FEES.solicitorSell;
+    const dep = net - moveCosts;
+    const loan = Math.max(0, s.buy - dep);
+    const mthly = monthlyPayment(loan, m.newRate, 25);
+    const fits25 = mthly <= m.maxMonthly;
+    h += `<div class="mort-line" style="padding:10px 0">
+      <div>
+        <div style="font-weight:700;font-size:14px">${s.label}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">Sell ${fmtGbp(s.sale)} · Buy ${fmtGbp(s.buy)} · Loan ${fmtGbp(loan)}</div>
+      </div>
+      <div style="text-align:right">
+        <div class="value" style="color:${fits25 ? 'var(--teal)' : '#DC2626'};font-size:16px">${fmtGbp(mthly)}/mth</div>
+        <div style="font-size:11px;color:var(--muted)">over 25y</div>
+      </div>
+    </div>`;
+  }
+  h += `</div>`;
+
+  // ---- Footnote ----
+  h += `<div class="mort-card" style="background:transparent;border:none;padding:0;color:var(--muted);font-size:12px;line-height:1.5">
+    <p><strong>Stamp duty:</strong> standard residential rates (April 2025). 0% to £125k, 2% £125–250k, 5% £250–925k, 10% £925k–£1.5m, 12% above.</p>
+    <p style="margin-top:6px"><strong>Fees</strong> are realistic UK averages; tweak to match your actual quotes.</p>
+    <p style="margin-top:6px"><strong>Caveat:</strong> assumes you sell first / port nothing / take a fresh repayment mortgage. Your existing 1.29% with 1 year left could be ported in some cases — worth a call with the lender before remortgaging.</p>
+  </div>`;
+
+  h += `</div>`;
+  return h;
+}
+
 function renderTabBar() {
   return `<div class="app-tab-bar">
     <button class="app-tab ${appTab==='tracker'?'active':''}" onclick="appTab='tracker';render()">
@@ -867,6 +1156,9 @@ function renderTabBar() {
     <button class="app-tab ${appTab==='routines'?'active':''}" onclick="appTab='routines';render()">
       <div class="app-tab-icon">\u{1F4AA}</div><span>Routines</span>
     </button>
+    <button class="app-tab ${appTab==='mortgage'?'active':''}" onclick="appTab='mortgage';render()">
+      <div class="app-tab-icon">\u{1F3E0}</div><span>Mortgage</span>
+    </button>
   </div>`;
 }
 
@@ -874,6 +1166,7 @@ function render() {
   let screen;
   if (appTab === 'routines') screen = renderRoutines();
   else if (appTab === 'todos') screen = renderTodos();
+  else if (appTab === 'mortgage') screen = renderMortgage();
   else screen = renderTracker();
   document.getElementById("app").innerHTML = `<div class="app-wrap">${screen}</div>${renderTabBar()}`;
 }
