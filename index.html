@@ -686,6 +686,201 @@ function weekAverageLine() {
   return { line: `Avg ${avg.toFixed(1)}/day · ${sign}${diff.toFixed(1)} vs target ${t}`, color };
 }
 
+// ── NUDGES ──────────────────────────────────────────────────────────
+// Pure functions over (habits, entries, today) returning a dismissible
+// card or null. Priority order: milestone > personal best > rest day > idle.
+// Each unique nudge id can be dismissed for 24h via localStorage.
+
+const NUDGE_DISMISSED_KEY = "ht_nudges_dismissed_v1";
+const NUDGE_TTL_MS = 24 * 60 * 60 * 1000;
+
+const IDLE_THRESHOLDS = {
+  "daily": 3,
+  "5x/week": 4,
+  "4x/week": 5,
+  "3x/week": 7,
+  "weekly": 14,
+  "monthly": 35,
+  "occasional": 60,
+};
+
+const PHYSICAL_KEYWORDS = ["exercise", "cardio", "brick", "stretch", "zone"];
+const STREAK_MILESTONES = [7, 14, 30, 60, 100, 200, 365];
+
+function loadDismissed() {
+  try { return JSON.parse(localStorage.getItem(NUDGE_DISMISSED_KEY)) || {}; }
+  catch { return {}; }
+}
+function isNudgeDismissed(id) {
+  const d = loadDismissed();
+  if (!d[id]) return false;
+  if (Date.now() - d[id] > NUDGE_TTL_MS) {
+    delete d[id];
+    localStorage.setItem(NUDGE_DISMISSED_KEY, JSON.stringify(d));
+    return false;
+  }
+  return true;
+}
+function dismissNudge(id) {
+  const d = loadDismissed();
+  d[id] = Date.now();
+  localStorage.setItem(NUDGE_DISMISSED_KEY, JSON.stringify(d));
+  render();
+}
+
+function daysSinceLast(habitIdx) {
+  const now = new Date();
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(now);
+    d.setDate(now.getDate() - i);
+    const k = dateKey(d);
+    if (entries[k] && entries[k][habitIdx]) return i;
+  }
+  return Infinity;
+}
+
+function currentStreak(habitIdx) {
+  const now = new Date();
+  let streak = 0;
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(now);
+    d.setDate(now.getDate() - i);
+    const k = dateKey(d);
+    if (entries[k] && entries[k][habitIdx]) streak++;
+    else break;
+  }
+  return streak;
+}
+
+// Previous best streak — longest run that ended before the current streak began.
+// Walks day by day so gap days correctly break streaks (entries object isn't dense).
+function previousBestStreak(habitIdx, currentStreakLen) {
+  const now = new Date();
+  let max = 0, cur = 0;
+  for (let i = currentStreakLen; i < 365; i++) {
+    const d = new Date(now);
+    d.setDate(now.getDate() - i);
+    const k = dateKey(d);
+    if (entries[k] && entries[k][habitIdx]) {
+      cur++;
+      if (cur > max) max = cur;
+    } else {
+      cur = 0;
+    }
+  }
+  return max;
+}
+
+function isPhysicalHabit(habit) {
+  const n = habit.name.toLowerCase();
+  return PHYSICAL_KEYWORDS.some(kw => n.includes(kw));
+}
+
+function nudgeMilestone(habit, hi) {
+  const streak = currentStreak(hi);
+  if (!STREAK_MILESTONES.includes(streak)) return null;
+  const flavour = streak >= 100
+    ? "That's seriously impressive. Take a bow."
+    : streak >= 30
+      ? "A proper milestone. Keep going."
+      : "Solid run. Stay on it.";
+  return {
+    id: `milestone:${habit.name}:${streak}`,
+    priority: 4,
+    emoji: habit.emoji,
+    title: `Hey Ollie — ${streak} days of ${habit.name}`,
+    body: flavour,
+    tone: "green",
+  };
+}
+
+function nudgePersonalBest(habit, hi) {
+  const streak = currentStreak(hi);
+  if (streak < 3) return null;
+  const prev = previousBestStreak(hi, streak);
+  // Only fire on the day the streak FIRST exceeds the previous best.
+  if (streak !== prev + 1 || prev === 0) return null;
+  return {
+    id: `pb:${habit.name}:${streak}`,
+    priority: 3,
+    emoji: habit.emoji,
+    title: `Hey Ollie — ${streak} days of ${habit.name}`,
+    body: `Longest streak yet (previous best was ${prev}).`,
+    tone: "teal",
+  };
+}
+
+function nudgeRestDay(habit, hi) {
+  if (habit.freq === "daily") return null;
+  if (!isPhysicalHabit(habit)) return null;
+  const streak = currentStreak(hi);
+  if (streak < 5) return null;
+  return {
+    id: `rest:${habit.name}:${streak}`,
+    priority: 2,
+    emoji: "💪",
+    title: `Hey Ollie — ${streak} days in a row on ${habit.name}`,
+    body: "Maybe a rest day?",
+    tone: "amber",
+  };
+}
+
+function nudgeIdle(habit, hi) {
+  const threshold = IDLE_THRESHOLDS[habit.freq] ?? 30;
+  const days = daysSinceLast(hi);
+  if (days === Infinity || days < threshold) return null;
+  // Bucket idle nudges into ~1-week chunks so dismissing one doesn't immediately
+  // re-fire the next day, but a worsening idle period eventually reappears.
+  const bucket = Math.floor(days / 7) * 7;
+  const phrase = days > 60 ? "Worth a quick re-engage?" : "Time to slot one in?";
+  return {
+    id: `idle:${habit.name}:${bucket}`,
+    priority: 1,
+    emoji: habit.emoji,
+    title: `Hey Ollie — ${habit.name} has been idle for ${days} days`,
+    body: phrase,
+    tone: "amber",
+  };
+}
+
+function getActiveNudge() {
+  const all = [];
+  const rules = [nudgeMilestone, nudgePersonalBest, nudgeRestDay, nudgeIdle];
+  habits.forEach((h, hi) => {
+    for (const rule of rules) {
+      const n = rule(h, hi);
+      if (n && !isNudgeDismissed(n.id)) {
+        all.push(n);
+        break; // Only one nudge per habit.
+      }
+    }
+  });
+  if (all.length === 0) return null;
+  all.sort((a, b) => b.priority - a.priority);
+  return all[0];
+}
+
+function renderNudgeCard(nudge) {
+  if (!nudge) return "";
+  const palettes = {
+    green: { bg: "#ECFDF5", border: "#10B981", text: "#065F46" },
+    teal:  { bg: "#E6FAF7", border: "#00A896", text: "#0F766E" },
+    amber: { bg: "#FEF3C7", border: "#F59E0B", text: "#92400E" },
+  };
+  const c = palettes[nudge.tone] || palettes.amber;
+  const safeId = nudge.id.replace(/'/g, "\\'");
+  return `
+    <div class="nudge-card" style="margin:12px 16px 4px;padding:12px 14px;background:${c.bg};border:1px solid ${c.border};border-radius:12px;display:flex;align-items:flex-start;gap:12px">
+      <div style="font-size:24px;line-height:1;flex-shrink:0">${nudge.emoji}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;color:${c.text};font-size:14px;line-height:1.3">${nudge.title}</div>
+        <div style="font-size:13px;color:${c.text};opacity:0.85;margin-top:2px">${nudge.body}</div>
+      </div>
+      <button onclick="dismissNudge('${safeId}')" aria-label="Dismiss" style="background:transparent;border:none;color:${c.text};cursor:pointer;font-size:20px;line-height:1;padding:4px 6px;opacity:0.6;flex-shrink:0">×</button>
+    </div>
+  `;
+}
+
 function toggle(dk, hi) {
   if (!entries[dk]) entries[dk] = {};
   entries[dk][hi] = !entries[dk][hi];
@@ -763,6 +958,8 @@ function renderTracker() {
       <button class="edit-btn ${editMode?"active":"inactive"}" onclick="editMode=!editMode;render()">${editMode?"Done":"Edit"}</button>
     </div>
   </div>
+
+  ${renderNudgeCard(getActiveNudge())}
 
   <div class="grid-wrap">
   <table>
