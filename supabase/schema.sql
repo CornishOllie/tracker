@@ -6,8 +6,12 @@ create table if not exists tracker_state (
   habits jsonb,
   entries jsonb,
   todos jsonb,
+  notes jsonb,
   updated_at timestamptz not null default now()
 );
+
+-- Idempotent column add for existing tables (notes was added 2026-05-29).
+alter table tracker_state add column if not exists notes jsonb;
 
 alter table tracker_state enable row level security;
 
