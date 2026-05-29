@@ -740,10 +740,74 @@ function daysSinceLast(habitIdx) {
   return Infinity;
 }
 
-function currentStreak(habitIdx) {
+// Streak unit derived from habit frequency. Daily habits count consecutive days;
+// "Nx/week" / "weekly" count consecutive weeks where the target was hit; "monthly"
+// counts consecutive months where it happened at least once; "occasional" has no
+// streak concept.
+function streakUnit(habit) {
+  const f = habit.freq;
+  if (f === "daily") return { period: "day", target: 1 };
+  if (f === "weekly") return { period: "week", target: 1 };
+  if (f === "monthly") return { period: "month", target: 1 };
+  if (f === "occasional") return null;
+  const m = f && f.match(/^(\d+)x\/week$/);
+  if (m) return { period: "week", target: parseInt(m[1], 10) };
+  return null;
+}
+
+function streakLabel(habit, value) {
+  const unit = streakUnit(habit);
+  if (!unit) return "—";
+  if (unit.period === "day") return String(value);
+  const suffix = unit.period === "week" ? "wk" : "mo";
+  return `${value} ${suffix}${value === 1 ? "" : "s"}`;
+}
+
+// Period range for the week or month containing `referenceDate`, offset back.
+function periodRange(referenceDate, period, periodsBack) {
+  if (period === "week") {
+    const day = referenceDate.getDay();
+    const monOffset = (day + 6) % 7;
+    const monday = new Date(referenceDate);
+    monday.setDate(referenceDate.getDate() - monOffset - periodsBack * 7);
+    monday.setHours(0, 0, 0, 0);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    return { start: monday, end: sunday };
+  }
+  if (period === "month") {
+    const year = referenceDate.getFullYear();
+    const month = referenceDate.getMonth() - periodsBack;
+    const start = new Date(year, month, 1);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(year, month + 1, 0);
+    return { start, end };
+  }
+  return { start: new Date(0), end: new Date(0) };
+}
+
+function countDoneInRange(habitIdx, start, end, today) {
+  let count = 0;
+  const d = new Date(start);
+  while (d <= end) {
+    if (d <= today) {
+      const k = dateKey(d);
+      if (entries[k] && entries[k][habitIdx]) count++;
+    }
+    d.setDate(d.getDate() + 1);
+  }
+  return count;
+}
+
+// Raw consecutive-days streak, with grace period for today. Used by daily-habit
+// streaks AND by the rest-day nudge (which always cares about real days in a row).
+function consecutiveDaysDone(habitIdx) {
   const now = new Date();
+  const todayKey = dateKey(now);
+  const todayDone = !!(entries[todayKey] && entries[todayKey][habitIdx]);
+  let i = todayDone ? 0 : 1;
   let streak = 0;
-  for (let i = 0; i < 365; i++) {
+  for (; i < 365; i++) {
     const d = new Date(now);
     d.setDate(now.getDate() - i);
     const k = dateKey(d);
@@ -753,12 +817,42 @@ function currentStreak(habitIdx) {
   return streak;
 }
 
-// Previous best streak — longest run that ended before the current streak began.
-// Walks day by day so gap days correctly break streaks (entries object isn't dense).
-function previousBestStreak(habitIdx, currentStreakLen) {
+// Consecutive periods where the habit hit its target count. Current period gets
+// a grace — if not yet at target it doesn't break the streak (just doesn't add).
+function consecutivePeriodsHittingTarget(habitIdx, period, target) {
   const now = new Date();
+  let streak = 0;
+  for (let p = 0; p < 200; p++) {
+    const r = periodRange(now, period, p);
+    const count = countDoneInRange(habitIdx, r.start, r.end, now);
+    const met = count >= target;
+    if (met) {
+      streak++;
+    } else if (p === 0) {
+      // Current period grace — keep walking back to find the streak.
+      continue;
+    } else {
+      break;
+    }
+  }
+  return streak;
+}
+
+function currentStreak(habitIdx) {
+  const habit = habits[habitIdx];
+  const unit = streakUnit(habit);
+  if (!unit) return 0;
+  if (unit.period === "day") return consecutiveDaysDone(habitIdx);
+  return consecutivePeriodsHittingTarget(habitIdx, unit.period, unit.target);
+}
+
+function previousBestDaysStreak(habitIdx, currentStreakLen) {
+  const now = new Date();
+  const todayKey = dateKey(now);
+  const todayDone = !!(entries[todayKey] && entries[todayKey][habitIdx]);
+  const skipCount = currentStreakLen + (todayDone ? 0 : 1);
   let max = 0, cur = 0;
-  for (let i = currentStreakLen; i < 365; i++) {
+  for (let i = skipCount; i < 365; i++) {
     const d = new Date(now);
     d.setDate(now.getDate() - i);
     const k = dateKey(d);
@@ -772,12 +866,45 @@ function previousBestStreak(habitIdx, currentStreakLen) {
   return max;
 }
 
+function previousBestPeriodsStreak(habitIdx, period, target, currentStreakLen) {
+  const now = new Date();
+  const currentRange = periodRange(now, period, 0);
+  const currentCount = countDoneInRange(habitIdx, currentRange.start, currentRange.end, now);
+  const currentMet = currentCount >= target;
+  const skipPeriods = currentStreakLen + (currentMet ? 0 : 1);
+  let max = 0, cur = 0;
+  for (let p = skipPeriods; p < 200; p++) {
+    const r = periodRange(now, period, p);
+    const count = countDoneInRange(habitIdx, r.start, r.end, now);
+    if (count >= target) {
+      cur++;
+      if (cur > max) max = cur;
+    } else {
+      cur = 0;
+    }
+  }
+  return max;
+}
+
+function previousBestStreak(habitIdx, currentStreakLen) {
+  const habit = habits[habitIdx];
+  const unit = streakUnit(habit);
+  if (!unit) return 0;
+  if (unit.period === "day") return previousBestDaysStreak(habitIdx, currentStreakLen);
+  return previousBestPeriodsStreak(habitIdx, unit.period, unit.target, currentStreakLen);
+}
+
 function isPhysicalHabit(habit) {
   const n = habit.name.toLowerCase();
   return PHYSICAL_KEYWORDS.some(kw => n.includes(kw));
 }
 
 function nudgeMilestone(habit, hi) {
+  // Milestone thresholds are calibrated for daily habits (7/14/30/...).
+  // For non-daily habits the unit is weeks/months, which the personal-best
+  // nudge already covers cleanly.
+  const unit = streakUnit(habit);
+  if (!unit || unit.period !== "day") return null;
   const streak = currentStreak(hi);
   if (!STREAK_MILESTONES.includes(streak)) return null;
   const flavour = streak >= 100
@@ -796,17 +923,18 @@ function nudgeMilestone(habit, hi) {
 }
 
 function nudgePersonalBest(habit, hi) {
+  const unit = streakUnit(habit);
+  if (!unit) return null;
   const streak = currentStreak(hi);
   if (streak < 3) return null;
   const prev = previousBestStreak(hi, streak);
-  // Only fire on the day the streak FIRST exceeds the previous best.
   if (streak !== prev + 1 || prev === 0) return null;
   return {
     id: `pb:${habit.name}:${streak}`,
     priority: 3,
     emoji: habit.emoji,
-    title: `Hey Ollie — ${streak} days of ${habit.name}`,
-    body: `Longest streak yet (previous best was ${prev}).`,
+    title: `Hey Ollie — ${streakLabel(habit, streak)} of ${habit.name}`,
+    body: `Longest streak yet (previous best was ${streakLabel(habit, prev)}).`,
     tone: "teal",
   };
 }
@@ -814,13 +942,15 @@ function nudgePersonalBest(habit, hi) {
 function nudgeRestDay(habit, hi) {
   if (habit.freq === "daily") return null;
   if (!isPhysicalHabit(habit)) return null;
-  const streak = currentStreak(hi);
-  if (streak < 5) return null;
+  // Always uses raw consecutive-days, regardless of the habit's streak unit.
+  // "5 days in a row on Exercise" is a physical-load signal, not a streak signal.
+  const days = consecutiveDaysDone(hi);
+  if (days < 5) return null;
   return {
-    id: `rest:${habit.name}:${streak}`,
+    id: `rest:${habit.name}:${days}`,
     priority: 2,
     emoji: "💪",
-    title: `Hey Ollie — ${streak} days in a row on ${habit.name}`,
+    title: `Hey Ollie — ${days} days in a row on ${habit.name}`,
     body: "Maybe a rest day?",
     tone: "amber",
   };
@@ -1056,11 +1186,11 @@ function renderHabitDetail() {
           </div>
           <div style="background:var(--bg);padding:8px 10px;border-radius:8px">
             <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">Streak</div>
-            <div style="font-size:17px;font-weight:600">${streak}</div>
+            <div style="font-size:17px;font-weight:600">${streakLabel(h, streak)}</div>
           </div>
           <div style="background:var(--bg);padding:8px 10px;border-radius:8px">
             <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">Longest</div>
-            <div style="font-size:17px;font-weight:600">${longest}</div>
+            <div style="font-size:17px;font-weight:600">${streakLabel(h, longest)}</div>
           </div>
         </div>
 
