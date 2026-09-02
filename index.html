@@ -322,9 +322,19 @@ const STORAGE_ENTRIES = "ht_entries_v2";
 const STORAGE_HABITS = "ht_habits_v2";
 const STORAGE_NOTES = "ht_notes_v1";
 
-// Fitness drive begins. Used for the "Day N" header indicator.
-const START_DATE = new Date(2026, 3, 27); // 27 April 2026 (month is 0-indexed)
-const START_DATE_LABEL = "27 April 2026";
+// Fitness drive begins. Used for the "Day N" header indicator, and streaks
+// ignore anything logged before it (earlier data is kept, just not counted).
+// Drive 1 ran from 27 April 2026; drive 2 restarted 7 September 2026.
+const START_DATE = new Date(2026, 8, 7); // 7 September 2026 (month is 0-indexed)
+const START_DATE_LABEL = "7 September 2026";
+
+// True if a date falls before the current drive's start.
+function isBeforeStart(d) {
+  return d.getFullYear() < START_DATE.getFullYear()
+    || (d.getFullYear() === START_DATE.getFullYear() && (
+        d.getMonth() < START_DATE.getMonth()
+        || (d.getMonth() === START_DATE.getMonth() && d.getDate() < START_DATE.getDate())));
+}
 
 (function migrateV1toV2() {
   try {
@@ -793,7 +803,7 @@ function countDoneInRange(habitIdx, start, end, today) {
   let count = 0;
   const d = new Date(start);
   while (d <= end) {
-    if (d <= today) {
+    if (d <= today && !isBeforeStart(d)) {
       const k = dateKey(d);
       if (entries[k] && entries[k][habitIdx]) count++;
     }
@@ -813,6 +823,7 @@ function consecutiveDaysDone(habitIdx) {
   for (; i < 365; i++) {
     const d = new Date(now);
     d.setDate(now.getDate() - i);
+    if (isBeforeStart(d)) break;
     const k = dateKey(d);
     if (entries[k] && entries[k][habitIdx]) streak++;
     else break;
@@ -858,6 +869,7 @@ function previousBestDaysStreak(habitIdx, currentStreakLen) {
   for (let i = skipCount; i < 365; i++) {
     const d = new Date(now);
     d.setDate(now.getDate() - i);
+    if (isBeforeStart(d)) break;
     const k = dateKey(d);
     if (entries[k] && entries[k][habitIdx]) {
       cur++;
